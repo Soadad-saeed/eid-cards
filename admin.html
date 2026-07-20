@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة تحكم المسؤول — إعداد بطاقة المعايدة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0F2D22;
+    --emerald:#123524;
+    --emerald-light:#1C5138;
+    --gold:#C9A227;
+    --gold-light:#E4C55E;
+    --cream:#FAF7F0;
+    --paper:#FFFFFF;
+    --line:#E4DFD2;
+    --danger:#B3413B;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Cairo', sans-serif;
+    background:
+      radial-gradient(circle at 15% -10%, rgba(228,197,94,0.18), transparent 40%),
+      var(--emerald);
+    color:var(--ink);
+    min-height:100vh;
+  }
+  header{
+    padding:28px 24px 20px;
+    text-align:center;
+    color:var(--cream);
+  }
+  header h1{
+    margin:0 0 6px;
+    font-size:26px;
+    font-weight:800;
+    letter-spacing:.3px;
+  }
+  header p{
+    margin:0;
+    font-size:14px;
+    color:#CFE3D8;
+  }
+  .wrap{
+    max-width:1100px;
+    margin:0 auto;
+    padding:0 20px 60px;
+    display:grid;
+    grid-template-columns:1.15fr .85fr;
+    gap:22px;
+  }
+  @media (max-width:880px){
+    .wrap{grid-template-columns:1fr;}
+  }
+  .card{
+    background:var(--paper);
+    border-radius:var(--radius);
+    padding:22px;
+    box-shadow:0 14px 34px rgba(0,0,0,.22);
+    border:1px solid var(--line);
+  }
+  .card h2{
+    margin:0 0 4px;
+    font-size:17px;
+    font-weight:800;
+    color:var(--emerald);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .card h2 .num{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:24px;height:24px;
+    border-radius:50%;
+    background:var(--gold);
+    color:var(--emerald);
+    font-size:13px;
+    font-weight:800;
+  }
+  .card .hint{
+    margin:2px 0 16px;
+    font-size:12.5px;
+    color:#7A7568;
+    line-height:1.7;
+  }
+  .upload-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    background:var(--emerald);
+    color:#fff;
+    border:none;
+    padding:11px 18px;
+    border-radius:10px;
+    font-family:inherit;
+    font-weight:700;
+    font-size:14px;
+    cursor:pointer;
+    transition:transform .15s ease, background .15s ease;
+  }
+  .upload-btn:hover{background:var(--emerald-light); transform:translateY(-1px);}
+  input[type=file]{display:none;}
+
+  #canvasWrap{
+    position:relative;
+    margin-top:16px;
+    border:1px dashed var(--line);
+    border-radius:10px;
+    overflow:hidden;
+    background:
+      linear-gradient(45deg,#f4f2eb 25%,transparent 25%),
+      linear-gradient(-45deg,#f4f2eb 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#f4f2eb 75%),
+      linear-gradient(-45deg,transparent 75%,#f4f2eb 75%);
+    background-size:20px 20px;
+    background-position:0 0,0 10px,10px -10px,-10px 0px;
+    display:none;
+    user-select:none;
+  }
+  #canvasWrap.active{display:block;}
+  #baseCanvas, #overlayCanvas{
+    display:block;
+    width:100%;
+    height:auto;
+  }
+  #overlayCanvas{
+    position:absolute;
+    inset:0;
+    cursor:crosshair;
+  }
+  .empty-state{
+    text-align:center;
+    padding:50px 20px;
+    color:#9a9484;
+    font-size:14px;
+  }
+
+  .field{margin-bottom:16px;}
+  .field label{
+    display:block;
+    font-size:13px;
+    font-weight:700;
+    color:var(--emerald);
+    margin-bottom:7px;
+  }
+  .row{display:flex; gap:12px;}
+  .row .field{flex:1;}
+  select, input[type=range], input[type=color], input[type=number]{
+    width:100%;
+    font-family:inherit;
+    font-size:14px;
+    padding:9px 10px;
+    border-radius:9px;
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+  }
+  input[type=color]{padding:4px; height:40px; cursor:pointer;}
+  .range-value{
+    font-size:12px;
+    color:#7A7568;
+    margin-top:4px;
+    text-align:left;
+    direction:ltr;
+  }
+  .toggle-row{
+    display:flex;
+    gap:10px;
+  }
+  .toggle-btn{
+    flex:1;
+    padding:9px 8px;
+    border-radius:9px;
+    border:1px solid var(--line);
+    background:#fff;
+    font-family:inherit;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+    color:#6b6656;
+    transition:.15s ease;
+  }
+  .toggle-btn.on{
+    background:var(--emerald);
+    border-color:var(--emerald);
+    color:#fff;
+  }
+  .preview-name-box{
+    margin-top:4px;
+    font-size:12px;
+    color:#7A7568;
+  }
+  .actions{
+    margin-top:22px;
+    display:flex;
+    gap:10px;
+  }
+  .save-btn{
+    flex:1;
+    background:var(--gold);
+    color:var(--emerald);
+    border:none;
+    padding:13px 16px;
+    border-radius:10px;
+    font-family:inherit;
+    font-weight:800;
+    font-size:15px;
+    cursor:pointer;
+    transition:.15s ease;
+  }
+  .save-btn:hover{background:var(--gold-light);}
+  .save-btn:disabled{opacity:.45; cursor:not-allowed;}
+  .reset-btn{
+    background:transparent;
+    border:1px solid var(--danger);
+    color:var(--danger);
+    padding:13px 16px;
+    border-radius:10px;
+    font-family:inherit;
+    font-weight:700;
+    font-size:14px;
+    cursor:pointer;
+  }
+  .status{
+    margin-top:14px;
+    font-size:13px;
+    padding:11px 14px;
+    border-radius:9px;
+    display:none;
+  }
+  .status.show{display:block;}
+  .status.ok{background:#E7F3EA; color:#1F6D3C; border:1px solid #BFE3C9;}
+  .status.err{background:#FBEAE8; color:#A1362F; border:1px solid #F1C6C1;}
+
+  .link-box{
+    margin-top:16px;
+    background:var(--cream);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:14px;
+    font-size:13px;
+    line-height:1.9;
+    color:#5a5646;
+  }
+  .link-box b{color:var(--emerald);}
+  .link-box code{
+    background:#fff;
+    border:1px solid var(--line);
+    padding:2px 6px;
+    border-radius:6px;
+    direction:ltr;
+    display:inline-block;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🌙 لوحة تحكم المسؤول</h1>
+  <p>إعداد قالب بطاقة معايدة العيد للموظفين</p>
+</header>
+
+<div class="wrap">
+
+  <!-- Left: Image + box drawing -->
+  <div class="card">
+    <h2><span class="num">1</span> رفع صورة المعايدة وتحديد موضع الاسم</h2>
+    <p class="hint">
+      ارفع صورة الخلفية، ثم اسحب بالفأرة على الصورة لرسم المربع (البوكس) الذي سيظهر بداخله اسم الموظف.
+      يمكنك إعادة الرسم في أي وقت.
+    </p>
+
+    <label class="upload-btn">
+      📤 رفع صورة المعايدة
+      <input type="file" id="imageInput" accept="image/*">
+    </label>
+
+    <div class="empty-state" id="emptyState">لم يتم رفع صورة بعد</div>
+
+    <div id="canvasWrap">
+      <canvas id="baseCanvas"></canvas>
+      <canvas id="overlayCanvas"></canvas>
+    </div>
+
+    <div class="preview-name-box" id="boxInfo"></div>
+  </div>
+
+  <!-- Right: Font settings + save -->
+  <div class="card">
+    <h2><span class="num">2</span> إعدادات النص</h2>
+    <p class="hint">هذه الإعدادات تتحكم في شكل اسم الموظف عند ظهوره داخل المربع.</p>
+
+    <div class="field">
+      <label>نوع الخط</label>
+      <select id="fontFamily">
+        <option value="Cairo">Cairo — عصري</option>
+        <option value="Tajawal">Tajawal — واضح</option>
+        <option value="Amiri">Amiri — نسخي كلاسيكي</option>
+        <option value="Arial">Arial</option>
+        <option value="'Times New Roman'">Times New Roman</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>حجم الخط (بالنسبة لارتفاع الصورة)</label>
+        <input type="range" id="fontSize" min="10" max="120" value="42">
+        <div class="range-value" id="fontSizeVal">42 px (على معاينة بعرض الصورة الحالي)</div>
+      </div>
+      <div class="field">
+        <label>لون الخط</label>
+        <input type="color" id="fontColor" value="#ffffff">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>وزن الخط</label>
+      <div class="toggle-row">
+        <button type="button" class="toggle-btn on" data-weight="normal">عادي</button>
+        <button type="button" class="toggle-btn" data-weight="bold">عريض (Bold)</button>
+      </div>
+    </div>
+
+    <h2 style="margin-top:24px;"><span class="num">3</span> الحفظ</h2>
+    <p class="hint">بعد الحفظ، شارك رابط صفحة الموظف معهم — سيرى كل موظف نفس الخلفية والإعدادات، ويكتب اسمه بنفسه.</p>
+
+    <div class="actions">
+      <button class="save-btn" id="saveBtn" disabled>💾 حفظ القالب</button>
+      <button class="reset-btn" id="resetBtn">حذف القالب المحفوظ</button>
+    </div>
+
+    <div class="status" id="statusMsg"></div>
+
+    <div class="link-box">
+      <b>ملاحظة مهمة:</b> يعتمد هذا التطبيق على تخزين الإعدادات محليًا في المتصفح (localStorage) لصفحة
+      <code>index.html</code> (صفحة الموظف). لكي يعمل الرابط بشكل صحيح لجميع الموظفين، يجب رفع الملفين
+      <code>admin.html</code> و <code>index.html</code> على نفس الاستضافة (نفس الدومين)، بحيث تكون صفحة
+      الموظف هي الرابط الذي يفتحه المتصفح على نفس السيرفر الذي حُفظ عليه القالب.
+    </div>
+  </div>
+
+</div>
+
+<script>
+const emptyState = document.getElementById('emptyState');
+const canvasWrap = document.getElementById('canvasWrap');
+const baseCanvas = document.getElementById('baseCanvas');
+const overlayCanvas = document.getElementById('overlayCanvas');
+const baseCtx = baseCanvas.getContext('2d');
+const overlayCtx = overlayCanvas.getContext('2d');
+const boxInfo = document.getElementById('boxInfo');
+const saveBtn = document.getElementById('saveBtn');
+const resetBtn = document.getElementById('resetBtn');
+const statusMsg = document.getElementById('statusMsg');
+
+const fontFamilySel = document.getElementById('fontFamily');
+const fontSizeRange = document.getElementById('fontSize');
+const fontSizeVal = document.getElementById('fontSizeVal');
+const fontColorInput = document.getElementById('fontColor');
+const weightBtns = document.querySelectorAll('.toggle-btn');
+
+let imageDataUrl = null;
+let naturalWidth = 0, naturalHeight = 0;
+let displayWidth = 0, displayHeight = 0; // canvas internal size (matches displayed size)
+let box = null; // {x,y,w,h} in canvas pixel units (== ratio * displayWidth/Height)
+let fontWeight = 'normal';
+
+// ---- drag-to-draw box ----
+let dragging = false, startX = 0, startY = 0;
+
+overlayCanvas.addEventListener('mousedown', (e) => {
+  if (!imageDataUrl) return;
+  const rect = overlayCanvas.getBoundingClientRect();
+  const scaleX = overlayCanvas.width / rect.width;
+  const scaleY = overlayCanvas.height / rect.height;
+  startX = (e.clientX - rect.left) * scaleX;
+  startY = (e.clientY - rect.top) * scaleY;
+  dragging = true;
+});
+
+overlayCanvas.addEventListener('mousemove', (e) => {
+  if (!dragging) return;
+  const rect = overlayCanvas.getBoundingClientRect();
+  const scaleX = overlayCanvas.width / rect.width;
+  const scaleY = overlayCanvas.height / rect.height;
+  const curX = (e.clientX - rect.left) * scaleX;
+  const curY = (e.clientY - rect.top) * scaleY;
+  box = normalizeBox(startX, startY, curX, curY);
+  drawOverlay();
+});
+
+window.addEventListener('mouseup', () => {
+  if (dragging) {
+    dragging = false;
+    updateSaveState();
+  }
+});
+
+function normalizeBox(x1, y1, x2, y2) {
+  return {
+    x: Math.min(x1, x2),
+    y: Math.min(y1, y2),
+    w: Math.abs(x2 - x1),
+    h: Math.abs(y2 - y1)
+  };
+}
+
+function drawOverlay() {
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  if (!box || box.w < 4 || box.h < 4) return;
+
+  overlayCtx.save();
+  overlayCtx.strokeStyle = '#C9A227';
+  overlayCtx.lineWidth = 3;
+  overlayCtx.setLineDash([8, 6]);
+  overlayCtx.strokeRect(box.x, box.y, box.w, box.h);
+
+  overlayCtx.setLineDash([]);
+  overlayCtx.fillStyle = 'rgba(201,162,39,0.14)';
+  overlayCtx.fillRect(box.x, box.y, box.w, box.h);
+
+  // live text preview inside the box using current font settings
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  let size = getScaledFontSize();
+  overlayCtx.textAlign = 'center';
+  overlayCtx.textBaseline = 'middle';
+  overlayCtx.fillStyle = fontColorInput.value;
+  overlayCtx.font = `${fontWeight} ${size}px ${fontFamilySel.value}`;
+  const sample = 'اسم الموظف';
+  size = fitFontToBox(overlayCtx, sample, box.w * 0.92, size, fontWeight, fontFamilySel.value);
+  overlayCtx.font = `${fontWeight} ${size}px ${fontFamilySel.value}`;
+  overlayCtx.fillText(sample, cx, cy);
+  overlayCtx.restore();
+
+  boxInfo.textContent = `الموضع: x=${Math.round(box.x)}, y=${Math.round(box.y)} — الحجم: ${Math.round(box.w)}×${Math.round(box.h)} px`;
+}
+
+function fitFontToBox(ctx, text, maxWidth, startSize, weight, family, minSize = 10) {
+  let size = startSize;
+  ctx.font = `${weight} ${size}px ${family}`;
+  while (ctx.measureText(text).width > maxWidth && size > minSize) {
+    size -= 1;
+    ctx.font = `${weight} ${size}px ${family}`;
+  }
+  return size;
+}
+
+function getScaledFontSize() {
+  return parseInt(fontSizeRange.value, 10);
+}
+
+// ---- image upload ----
+document.getElementById('imageInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    imageDataUrl = ev.target.result;
+    loadImageToCanvas(imageDataUrl);
+  };
+  reader.readAsDataURL(file);
+});
+
+function loadImageToCanvas(dataUrl) {
+  const img = new Image();
+  img.onload = () => {
+    naturalWidth = img.naturalWidth;
+    naturalHeight = img.naturalHeight;
+
+    const maxDisplayWidth = 640;
+    const scale = Math.min(1, maxDisplayWidth / naturalWidth);
+    displayWidth = Math.round(naturalWidth * scale);
+    displayHeight = Math.round(naturalHeight * scale);
+
+    [baseCanvas, overlayCanvas].forEach(c => {
+      c.width = displayWidth;
+      c.height = displayHeight;
+    });
+
+    baseCtx.clearRect(0, 0, displayWidth, displayHeight);
+    baseCtx.drawImage(img, 0, 0, displayWidth, displayHeight);
+
+    box = null;
+    overlayCtx.clearRect(0, 0, displayWidth, displayHeight);
+    boxInfo.textContent = 'الآن اسحب على الصورة لرسم مربع مكان الاسم';
+
+    emptyState.style.display = 'none';
+    canvasWrap.classList.add('active');
+    updateSaveState();
+  };
+  img.src = dataUrl;
+}
+
+// ---- controls ----
+fontSizeRange.addEventListener('input', () => {
+  fontSizeVal.textContent = `${fontSizeRange.value} px (على معاينة بعرض الصورة الحالي)`;
+  drawOverlay();
+});
+fontColorInput.addEventListener('input', drawOverlay);
+fontFamilySel.addEventListener('change', () => {
+  document.fonts.load(`16px ${fontFamilySel.value}`).then(drawOverlay).catch(drawOverlay);
+});
+weightBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    weightBtns.forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    fontWeight = btn.dataset.weight;
+    drawOverlay();
+  });
+});
+
+function updateSaveState() {
+  saveBtn.disabled = !(imageDataUrl && box && box.w > 4 && box.h > 4);
+}
+
+// ---- save / reset ----
+saveBtn.addEventListener('click', () => {
+  if (!imageDataUrl || !box) return;
+
+  const template = {
+    image: imageDataUrl,
+    naturalWidth,
+    naturalHeight,
+    box: {
+      xRatio: box.x / displayWidth,
+      yRatio: box.y / displayHeight,
+      wRatio: box.w / displayWidth,
+      hRatio: box.h / displayHeight
+    },
+    font: {
+      family: fontFamilySel.value,
+      color: fontColorInput.value,
+      weight: fontWeight,
+      // stored relative to canvas HEIGHT so it scales consistently at any output resolution
+      sizeRatio: getScaledFontSize() / displayHeight
+    },
+    savedAt: Date.now()
+  };
+
+  try {
+    localStorage.setItem('eidCardTemplate', JSON.stringify(template));
+    showStatus('تم حفظ القالب بنجاح ✅ يمكنك الآن مشاركة رابط صفحة الموظف (index.html).', 'ok');
+  } catch (err) {
+    showStatus('تعذّر حفظ القالب — الصورة قد تكون كبيرة جدًا لمساحة التخزين المحلية. جرّب صورة أصغر حجمًا.', 'err');
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  localStorage.removeItem('eidCardTemplate');
+  showStatus('تم حذف القالب المحفوظ.', 'ok');
+});
+
+function showStatus(msg, type) {
+  statusMsg.textContent = msg;
+  statusMsg.className = `status show ${type}`;
+  setTimeout(() => statusMsg.classList.remove('show'), 5000);
+}
+
+// ---- load existing template into editor on page open ----
+(function restoreExisting() {
+  const raw = localStorage.getItem('eidCardTemplate');
+  if (!raw) return;
+  try {
+    const t = JSON.parse(raw);
+    imageDataUrl = t.image;
+    fontFamilySel.value = t.font.family;
+    fontColorInput.value = t.font.color;
+    fontWeight = t.font.weight;
+    weightBtns.forEach(b => b.classList.toggle('on', b.dataset.weight === fontWeight));
+
+    const img = new Image();
+    img.onload = () => {
+      naturalWidth = img.naturalWidth;
+      naturalHeight = img.naturalHeight;
+      const maxDisplayWidth = 640;
+      const scale = Math.min(1, maxDisplayWidth / naturalWidth);
+      displayWidth = Math.round(naturalWidth * scale);
+      displayHeight = Math.round(naturalHeight * scale);
+      [baseCanvas, overlayCanvas].forEach(c => { c.width = displayWidth; c.height = displayHeight; });
+      baseCtx.drawImage(img, 0, 0, displayWidth, displayHeight);
+
+      box = {
+        x: t.box.xRatio * displayWidth,
+        y: t.box.yRatio * displayHeight,
+        w: t.box.wRatio * displayWidth,
+        h: t.box.hRatio * displayHeight
+      };
+      fontSizeRange.value = Math.round(t.font.sizeRatio * displayHeight);
+      fontSizeVal.textContent = `${fontSizeRange.value} px (على معاينة بعرض الصورة الحالي)`;
+
+      emptyState.style.display = 'none';
+      canvasWrap.classList.add('active');
+      drawOverlay();
+      updateSaveState();
+    };
+    img.src = imageDataUrl;
+  } catch (e) { /* ignore corrupted data */ }
+})();
+</script>
+</body>
+</html>

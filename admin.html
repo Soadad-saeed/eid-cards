@@ -830,9 +830,10 @@ const lockErr = document.getElementById('lockErr');
 const switchLink = document.getElementById('switchLink');
 const logoutBtn = document.getElementById('logoutBtn');
 
-const PASS_KEY = 'eidAdminPassHash';
+const AUTH_DOC = db.collection('eidCards').doc('adminAuth');
 const SESSION_KEY = 'eidAdminUnlocked';
-let mode = localStorage.getItem(PASS_KEY) ? 'login' : 'setup';
+let mode = null;        // 'setup' | 'login' — determined from Firestore, once, for everyone
+let savedHash = null;
 
 async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -843,21 +844,27 @@ function renderLockMode() {
   lockErr.textContent = '';
   passInput.value = '';
   passConfirm.value = '';
+  switchLink.style.display = 'none'; // no self-service reset — see note below
+
   if (mode === 'setup') {
-    lockTitle.textContent = 'تعيين رقم سري للوحة التحكم';
-    lockSubtitle.textContent = 'هذا الرقم سيُطلب منك في كل مرة تفتح فيها هذه الصفحة';
+    lockTitle.textContent = 'تعيين الرقم السري (مرة واحدة فقط)';
+    lockSubtitle.textContent = 'لم يتم تعيين رقم سري بعد. أول رقم يُحفظ هنا سيصبح رقم الدخول الدائم للوحة التحكم لجميع من يديرها لاحقًا.';
     passInput.placeholder = 'اكتب رقمًا سريًا جديدًا';
     passConfirm.style.display = 'block';
     lockActionBtn.textContent = 'حفظ وتفعيل';
-    switchLink.style.display = 'none';
-  } else {
+  } else if (mode === 'login') {
     lockTitle.textContent = 'دخول المسؤول';
     lockSubtitle.textContent = 'أدخل الرقم السري للوصول إلى لوحة التحكم';
     passInput.placeholder = 'الرقم السري';
     passConfirm.style.display = 'none';
     lockActionBtn.textContent = 'دخول';
-    switchLink.style.display = 'block';
+  } else {
+    lockTitle.textContent = 'جاري التحقق...';
+    lockSubtitle.textContent = '';
+    lockActionBtn.textContent = '...';
   }
+  passInput.disabled = mode === null;
+  lockActionBtn.disabled = mode === null;
   passInput.focus();
 }
 
@@ -877,13 +884,31 @@ lockActionBtn.addEventListener('click', async () => {
     const confirmVal = passConfirm.value.trim();
     if (val.length < 4) { lockErr.textContent = 'يجب أن يكون الرقم السري 4 خانات على الأقل'; return; }
     if (val !== confirmVal) { lockErr.textContent = 'الرقمان غير متطابقين'; return; }
+
+    lockActionBtn.disabled = true;
+    try {
+      const hash = await sha256(val);
+      // Guard against a race where two people set it up at nearly the same time:
+      // re-check the doc doesn't already exist right before writing.
+      const doc = await AUTH_DOC.get();
+      if (doc.exists) {
+        savedHash = doc.data().passHash;
+        mode = 'login';
+        renderLockMode();
+        lockErr.textContent = 'تم تعيين الرقم السري بالفعل من شخص آخر للتو. الرجاء إدخاله للدخول.';
+        return;
+      }
+      await AUTH_DOC.set({ passHash: hash, setAt: Date.now() });
+      savedHash = hash;
+      unlockApp();
+    } catch (err) {
+      lockErr.textContent = 'تعذّر الحفظ: ' + err.message;
+    } finally {
+      lockActionBtn.disabled = false;
+    }
+  } else if (mode === 'login') {
     const hash = await sha256(val);
-    localStorage.setItem(PASS_KEY, hash);
-    unlockApp();
-  } else {
-    const hash = await sha256(val);
-    const saved = localStorage.getItem(PASS_KEY);
-    if (hash === saved) {
+    if (hash === savedHash) {
       unlockApp();
     } else {
       lockErr.textContent = 'الرقم السري غير صحيح';
@@ -894,13 +919,12 @@ lockActionBtn.addEventListener('click', async () => {
 passInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') lockActionBtn.click(); });
 passConfirm.addEventListener('keydown', (e) => { if (e.key === 'Enter') lockActionBtn.click(); });
 
-switchLink.addEventListener('click', () => {
-  if (confirm('سيؤدي هذا إلى حذف الرقم السري الحالي وتعيين رقم جديد. هل تريد المتابعة؟')) {
-    localStorage.removeItem(PASS_KEY);
-    mode = 'setup';
-    renderLockMode();
-  }
-});
+// Note: there is intentionally no self-service "forgot password" option.
+// The password is set once, by whoever opens this page first, and stays fixed
+// for everyone after that — this is the point of the request. If it's genuinely
+// forgotten, someone with access to the Firebase project console must delete the
+// "adminAuth" document under the "eidCards" collection in Firestore; the next
+// person to open this page will then be prompted to set a new one.
 
 logoutBtn.addEventListener('click', () => {
   sessionStorage.removeItem(SESSION_KEY);
@@ -919,11 +943,27 @@ function setEmployeeLink() {
   };
 }
 
-// entry point
-renderLockMode();
-if (sessionStorage.getItem(SESSION_KEY) === '1' && localStorage.getItem(PASS_KEY)) {
-  unlockApp();
-}
+// ---- entry point: figure out setup vs. login from the single shared Firestore doc ----
+(async function initAuth() {
+  renderLockMode(); // shows "جاري التحقق..." while we fetch
+  try {
+    const doc = await AUTH_DOC.get();
+    if (doc.exists) {
+      mode = 'login';
+      savedHash = doc.data().passHash;
+    } else {
+      mode = 'setup';
+    }
+  } catch (err) {
+    mode = 'login';
+    lockErr.textContent = 'تعذّر الاتصال بقاعدة البيانات، تحقق من الإنترنت وأعد تحميل الصفحة.';
+  }
+  renderLockMode();
+
+  if (mode === 'login' && sessionStorage.getItem(SESSION_KEY) === '1') {
+    unlockApp();
+  }
+})();
 </script>
 </body>
 </html>

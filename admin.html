@@ -6,6 +6,8 @@
 <title>لوحة تحكم المسؤول — إعداد بطاقة المعايدة</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --ink:#0F2D22;
@@ -494,6 +496,19 @@
 </div><!-- /#appContent -->
 
 <script>
+// ================= Firebase =================
+const firebaseConfig = {
+  apiKey: "AIzaSyD3D9ic6ifQE--PUQ_JAycn9unWIcWR-rM",
+  authDomain: "sanabis-eid-cards.firebaseapp.com",
+  projectId: "sanabis-eid-cards",
+  storageBucket: "sanabis-eid-cards.firebasestorage.app",
+  messagingSenderId: "451515581999",
+  appId: "1:451515581999:web:17af65764ae1ae7e0fa8da"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const TEMPLATE_DOC = db.collection('eidCards').doc('template');
+
 const emptyState = document.getElementById('emptyState');
 const canvasWrap = document.getElementById('canvasWrap');
 const baseCanvas = document.getElementById('baseCanvas');
@@ -602,16 +617,50 @@ function getScaledFontSize() {
   return parseInt(fontSizeRange.value, 10);
 }
 
-// ---- image upload ----
-document.getElementById('imageInput').addEventListener('change', (e) => {
+// ---- image upload (with compression so it fits well within Firestore's 1MB doc limit) ----
+function compressImage(file, maxDim = 1400, maxBytes = 700000) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        const scale = Math.min(1, maxDim / Math.max(width, height));
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+
+        const c = document.createElement('canvas');
+        c.width = width;
+        c.height = height;
+        const cctx = c.getContext('2d');
+        cctx.drawImage(img, 0, 0, width, height);
+
+        let quality = 0.88;
+        let dataUrl = c.toDataURL('image/jpeg', quality);
+        while (dataUrl.length > maxBytes * 1.37 && quality > 0.4) {
+          quality -= 0.08;
+          dataUrl = c.toDataURL('image/jpeg', quality);
+        }
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error('تعذّرت قراءة الصورة'));
+      img.src = ev.target.result;
+    };
+    reader.onerror = () => reject(new Error('تعذّرت قراءة الملف'));
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('imageInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    imageDataUrl = ev.target.result;
+  showStatus('جاري تجهيز الصورة...', 'ok');
+  try {
+    imageDataUrl = await compressImage(file);
     loadImageToCanvas(imageDataUrl);
-  };
-  reader.readAsDataURL(file);
+  } catch (err) {
+    showStatus('تعذّر تجهيز الصورة، جرّب صورة أخرى.', 'err');
+  }
 });
 
 function loadImageToCanvas(dataUrl) {
@@ -667,7 +716,7 @@ function updateSaveState() {
 }
 
 // ---- save / reset ----
-saveBtn.addEventListener('click', () => {
+saveBtn.addEventListener('click', async () => {
   if (!imageDataUrl || !box) return;
 
   const template = {
@@ -690,17 +739,29 @@ saveBtn.addEventListener('click', () => {
     savedAt: Date.now()
   };
 
+  saveBtn.disabled = true;
+  const originalLabel = saveBtn.textContent;
+  saveBtn.textContent = '⏳ جاري الحفظ...';
+
   try {
-    localStorage.setItem('eidCardTemplate', JSON.stringify(template));
-    showStatus('تم حفظ القالب بنجاح ✅ يمكنك الآن مشاركة رابط صفحة الموظف (index.html).', 'ok');
+    await TEMPLATE_DOC.set(template);
+    showStatus('تم حفظ القالب بنجاح ✅ يمكنك الآن مشاركة رابط صفحة الموظف — سيظهر لكل موظف من أي جهاز.', 'ok');
   } catch (err) {
-    showStatus('تعذّر حفظ القالب — الصورة قد تكون كبيرة جدًا لمساحة التخزين المحلية. جرّب صورة أصغر حجمًا.', 'err');
+    showStatus('تعذّر حفظ القالب على قاعدة البيانات: ' + err.message, 'err');
+  } finally {
+    saveBtn.textContent = originalLabel;
+    updateSaveState();
   }
 });
 
-resetBtn.addEventListener('click', () => {
-  localStorage.removeItem('eidCardTemplate');
-  showStatus('تم حذف القالب المحفوظ.', 'ok');
+resetBtn.addEventListener('click', async () => {
+  if (!confirm('سيتم حذف القالب المحفوظ نهائيًا لكل الموظفين. متابعة؟')) return;
+  try {
+    await TEMPLATE_DOC.delete();
+    showStatus('تم حذف القالب المحفوظ.', 'ok');
+  } catch (err) {
+    showStatus('تعذّر الحذف: ' + err.message, 'err');
+  }
 });
 
 function showStatus(msg, type) {
@@ -709,12 +770,19 @@ function showStatus(msg, type) {
   setTimeout(() => statusMsg.classList.remove('show'), 5000);
 }
 
-// ---- load existing template into editor on page open ----
-(function restoreExisting() {
-  const raw = localStorage.getItem('eidCardTemplate');
-  if (!raw) return;
+// ---- load existing template into editor (called after unlock) ----
+async function restoreExisting() {
+  let t;
   try {
-    const t = JSON.parse(raw);
+    const doc = await TEMPLATE_DOC.get();
+    if (!doc.exists) return;
+    t = doc.data();
+  } catch (e) {
+    showStatus('تعذّر تحميل القالب المحفوظ من قاعدة البيانات.', 'err');
+    return;
+  }
+
+  try {
     imageDataUrl = t.image;
     fontFamilySel.value = t.font.family;
     fontColorInput.value = t.font.color;
@@ -747,8 +815,8 @@ function showStatus(msg, type) {
       updateSaveState();
     };
     img.src = imageDataUrl;
-  } catch (e) { /* ignore corrupted data */ }
-})();
+  } catch (e) { /* ignore malformed data */ }
+}
 
 // ================= Password lock =================
 const lockScreen = document.getElementById('lockScreen');
@@ -798,6 +866,7 @@ function unlockApp() {
   lockScreen.style.display = 'none';
   appContent.style.display = 'block';
   setEmployeeLink();
+  restoreExisting();
 }
 
 lockActionBtn.addEventListener('click', async () => {

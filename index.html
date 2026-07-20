@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
     --ink:#0F2D22;
@@ -98,26 +99,47 @@
     outline:none;
     border-color:var(--gold);
   }
-  .download-btn{
+  .download-row{
     margin-top:16px;
-    width:100%;
+    display:flex;
+    gap:10px;
+  }
+  .download-btn{
+    flex:1;
     background:var(--gold);
     color:var(--emerald);
     border:none;
-    padding:15px 16px;
+    padding:15px 12px;
     border-radius:11px;
     font-family:inherit;
     font-weight:800;
-    font-size:16px;
+    font-size:15px;
     cursor:pointer;
     transition:.15s ease;
     display:flex;
     align-items:center;
     justify-content:center;
-    gap:8px;
+    gap:6px;
+  }
+  .download-btn.secondary{
+    background:var(--paper);
+    color:var(--emerald);
+    border:1.5px solid var(--emerald);
   }
   .download-btn:hover:not(:disabled){background:var(--gold-light); transform:translateY(-1px);}
+  .download-btn.secondary:hover:not(:disabled){background:var(--cream); transform:translateY(-1px);}
   .download-btn:disabled{opacity:.45; cursor:not-allowed;}
+  .ios-hint{
+    margin-top:10px;
+    background:#FFF7E6;
+    border:1px solid #F1DDA8;
+    color:#7A5B10;
+    font-size:12.5px;
+    line-height:1.8;
+    padding:10px 12px;
+    border-radius:9px;
+    display:none;
+  }
   .foot-hint{
     margin-top:12px;
     text-align:center;
@@ -158,11 +180,20 @@
       <input type="text" id="nameInput" placeholder="مثال: محمد الأحمد" maxlength="60" autocomplete="off">
     </div>
 
-    <button class="download-btn" id="downloadBtn" style="display:none;" disabled>
-      ⬇️ تحميل البطاقة
-    </button>
+    <div class="download-row" id="downloadRow" style="display:none;">
+      <button class="download-btn" id="downloadImgBtn" disabled>
+        🖼️ تحميل كصورة
+      </button>
+      <button class="download-btn secondary" id="downloadPdfBtn" disabled>
+        📄 تحميل PDF
+      </button>
+    </div>
+    <div class="ios-hint" id="iosHint">
+      📌 إذا لم يبدأ التحميل تلقائيًا على آيفون: اضغط مطولًا على الصورة التي تفتح في الصفحة الجديدة، ثم اختر
+      "حفظ الصورة" — أو استخدم زر "تحميل PDF" فهو يعمل بشكل أضمن على آيفون.
+    </div>
     <div class="foot-hint" id="footHint" style="display:none;">
-      سيتم تنزيل الصورة بجودة عالية على جهازك
+      سيتم تنزيل الملف بجودة عالية على جهازك
     </div>
   </div>
 
@@ -188,8 +219,14 @@ const ctx = canvas.getContext('2d');
 const emptyMsg = document.getElementById('emptyMsg');
 const nameField = document.getElementById('nameField');
 const nameInput = document.getElementById('nameInput');
-const downloadBtn = document.getElementById('downloadBtn');
+const downloadImgBtn = document.getElementById('downloadImgBtn');
+const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+const downloadRow = document.getElementById('downloadRow');
+const iosHint = document.getElementById('iosHint');
 const footHint = document.getElementById('footHint');
+
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS reports as Mac
 
 let template = null;
 let bgImage = null;
@@ -221,8 +258,9 @@ async function init() {
     emptyMsg.style.display = 'none';
     canvas.style.display = 'block';
     nameField.style.display = 'block';
-    downloadBtn.style.display = 'flex';
+    downloadRow.style.display = 'flex';
     footHint.style.display = 'block';
+    if (isIOS) iosHint.style.display = 'block';
 
     // Preload font before first render to avoid fallback-font flash
     const fam = template.font.family.replace(/'/g, '');
@@ -243,10 +281,12 @@ function render(name) {
 
   const trimmed = (name || '').trim();
   if (!trimmed) {
-    downloadBtn.disabled = true;
+    downloadImgBtn.disabled = true;
+    downloadPdfBtn.disabled = true;
     return;
   }
-  downloadBtn.disabled = false;
+  downloadImgBtn.disabled = false;
+  downloadPdfBtn.disabled = false;
 
   const box = {
     x: template.box.xRatio * w,
@@ -287,13 +327,57 @@ function fitFontToBox(text, maxWidth, startSize, weight, family, minSize) {
 
 nameInput.addEventListener('input', () => render(nameInput.value));
 
-downloadBtn.addEventListener('click', () => {
-  if (downloadBtn.disabled) return;
-  const link = document.createElement('a');
+function getSafeFileName() {
   const safeName = (nameInput.value || 'card').trim().replace(/[^\p{L}\p{N}\s-]/gu, '').replace(/\s+/g, '-');
-  link.download = `بطاقة-معايدة-${safeName || 'موظف'}.png`;
-  link.href = canvas.toDataURL('image/png', 1.0);
+  return safeName || 'موظف';
+}
+
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
   link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+downloadImgBtn.addEventListener('click', () => {
+  if (downloadImgBtn.disabled) return;
+  const filename = `بطاقة-معايدة-${getSafeFileName()}.png`;
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    if (isIOS) {
+      // iOS Safari frequently ignores the `download` attribute and blocks
+      // the auto-download flow. Opening the image in a new tab lets the
+      // person long-press it and choose "Save Image" instead.
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 15000);
+    } else {
+      triggerBlobDownload(blob, filename);
+    }
+  }, 'image/png', 1.0);
+});
+
+downloadPdfBtn.addEventListener('click', () => {
+  if (downloadPdfBtn.disabled) return;
+  const { jsPDF } = window.jspdf;
+  const imgData = canvas.toDataURL('image/jpeg', 0.95);
+
+  const pdf = new jsPDF({
+    orientation: canvas.width >= canvas.height ? 'landscape' : 'portrait',
+    unit: 'px',
+    format: [canvas.width, canvas.height]
+  });
+  pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+
+  const filename = `بطاقة-معايدة-${getSafeFileName()}.pdf`;
+  // jsPDF's save() builds a Blob under the hood, which iOS Safari
+  // handles far more reliably than data-URL downloads.
+  pdf.save(filename);
 });
 
 init();
